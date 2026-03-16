@@ -1,4 +1,3 @@
-
 import asyncio
 import logging
 from datetime import datetime, timedelta
@@ -14,7 +13,10 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-BOT_TOKEN = "8760390856:AAFAvOOPMpnpGwYFlhUaYxsXl_SpUXHtI9M"
+# =========================
+# الإعدادات
+# =========================
+BOT_TOKEN = "8610747058:AAGUJAaNBMLA_8uar5dvu8YfLp2_z7mPAVw"
 ADMIN_ID = 7007160064
 SUPPORT_USERNAME = "Dmaardone"
 
@@ -42,8 +44,8 @@ DEFAULT_CATEGORIES = [
 
 logging.basicConfig(level=logging.INFO)
 
-if not BOT_TOKEN or BOT_TOKEN == "PUT_BOT_TOKEN_HERE":
-    raise RuntimeError("ضع BOT_TOKEN الحقيقي داخل bot.py")
+if not BOT_TOKEN.strip():
+    raise RuntimeError("ضع التوكن داخل BOT_TOKEN في bot.py")
 
 bot = Bot(
     token=BOT_TOKEN,
@@ -51,6 +53,9 @@ bot = Bot(
 )
 dp = Dispatcher(storage=MemoryStorage())
 
+# =========================
+# الحالات
+# =========================
 class AddCategoryState(StatesGroup):
     name = State()
 
@@ -80,6 +85,9 @@ class BuyStates(StatesGroup):
     quantity = State()
     waiting_payment_proof = State()
 
+# =========================
+# أدوات
+# =========================
 def is_admin(user_id: int) -> bool:
     return user_id == ADMIN_ID
 
@@ -87,15 +95,14 @@ def support_url() -> str:
     return f"https://t.me/{SUPPORT_USERNAME}"
 
 def status_label(status: str) -> str:
-    mapping = {
+    return {
         "reserved": "محجوز",
         "review": "بانتظار مراجعة الأدمن",
         "approved": "تم التسليم",
         "rejected": "مرفوض",
         "expired": "انتهت المهلة",
         "cancelled": "ملغي",
-    }
-    return mapping.get(status, status)
+    }.get(status, status)
 
 def safe_int(text: str) -> Optional[int]:
     try:
@@ -112,6 +119,9 @@ def format_price(value) -> str:
     except Exception:
         return str(value)
 
+# =========================
+# قاعدة البيانات
+# =========================
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("""
@@ -291,16 +301,19 @@ async def create_order_with_quantity(user_id: int, product_id: int, quantity: in
         rows = await cur.fetchall()
         if len(rows) < quantity:
             return None
+
         cur = await db.execute(
             "INSERT INTO orders (user_id, product_id, quantity, total_price, status) VALUES (?, ?, ?, ?, 'reserved')",
             (user_id, product_id, quantity, total_price),
         )
         order_id = cur.lastrowid
+
         for (stock_id,) in rows:
             await db.execute(
                 "UPDATE stock_items SET status='reserved', reserved_by=?, reserved_until=?, order_id=? WHERE id=?",
                 (user_id, reserve_until, order_id, stock_id),
             )
+
         await db.commit()
         return order_id
 
@@ -441,6 +454,9 @@ async def get_all_users_ids():
         rows = await cur.fetchall()
         return [r[0] for r in rows]
 
+# =========================
+# الواجهات
+# =========================
 def user_main_menu(is_admin_user: bool = False):
     rows = [
         [InlineKeyboardButton(text="🛍️ المتجر", callback_data="menu_store")],
@@ -454,7 +470,9 @@ def user_main_menu(is_admin_user: bool = False):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 def back_home_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 الرئيسية", callback_data="back_home")]])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="🔙 الرئيسية", callback_data="back_home")]]
+    )
 
 def admin_menu():
     return InlineKeyboardMarkup(
@@ -504,14 +522,23 @@ def approve_reject_kb(order_id: int):
         ]]
     )
 
+# =========================
+# واجهة العميل
+# =========================
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     await register_user(message)
-    await message.answer("✨ أهلاً بك في متجر AMB ✨\n\nاختر من الأزرار التالية:", reply_markup=user_main_menu(is_admin(message.from_user.id)))
+    await message.answer(
+        "✨ أهلاً بك في متجر AMB ✨\n\nاختر من الأزرار التالية:",
+        reply_markup=user_main_menu(is_admin(message.from_user.id)),
+    )
 
 @dp.callback_query(F.data == "back_home")
 async def back_home(callback: CallbackQuery):
-    await callback.message.edit_text("🏠 الرئيسية", reply_markup=user_main_menu(is_admin(callback.from_user.id)))
+    await callback.message.edit_text(
+        "🏠 الرئيسية",
+        reply_markup=user_main_menu(is_admin(callback.from_user.id)),
+    )
     await callback.answer()
 
 @dp.callback_query(F.data == "menu_store")
@@ -568,6 +595,7 @@ async def category_products(callback: CallbackQuery):
         await callback.message.edit_text("لا توجد منتجات في هذا القسم الآن.", reply_markup=await categories_kb("cat"))
         await callback.answer()
         return
+
     rows = []
     for pid, name, price, desc, is_active, count in visible:
         rows.append([InlineKeyboardButton(text=f"{name} — {format_price(price)}", callback_data=f"product_{pid}")])
@@ -582,10 +610,12 @@ async def product_page(callback: CallbackQuery, state: FSMContext):
     if not product:
         await callback.answer("المنتج غير موجود", show_alert=True)
         return
+
     pid, cat_name, name, price, description, is_active, available_count = product
     if not is_active:
         await callback.answer("المنتج مخفي حالياً", show_alert=True)
         return
+
     text = (
         f"<b>{name}</b>\n"
         f"القسم: {cat_name}\n"
@@ -610,6 +640,7 @@ async def buy_product(callback: CallbackQuery, state: FSMContext):
     if not product:
         await callback.answer("المنتج غير موجود", show_alert=True)
         return
+
     await state.update_data(selected_product_id=product_id)
     await state.set_state(BuyStates.quantity)
     await callback.message.edit_text("كم عدد الحسابات / الوحدات التي تريدها؟ أرسل رقمًا فقط.")
@@ -621,6 +652,7 @@ async def receive_quantity(message: Message, state: FSMContext):
     if not quantity or quantity <= 0:
         await message.answer("أرسل رقمًا صحيحًا أكبر من 0.")
         return
+
     data = await state.get_data()
     product_id = data.get("selected_product_id")
     product = await get_product(product_id)
@@ -628,15 +660,18 @@ async def receive_quantity(message: Message, state: FSMContext):
         await state.clear()
         await message.answer("المنتج غير موجود.")
         return
+
     pid, cat_name, name, price, description, is_active, available_count = product
     if quantity > available_count:
         await message.answer(f"الكمية المطلوبة غير متوفرة. المتوفر حاليًا: {available_count}")
         return
+
     total_price = float(price) * quantity
     order_id = await create_order_with_quantity(message.from_user.id, product_id, quantity, total_price)
     if not order_id:
         await message.answer("تعذر حجز الكمية المطلوبة. جرّب مرة أخرى.")
         return
+
     await state.clear()
     text = (
         f"✅ تم إنشاء الطلب #{order_id}\n\n"
@@ -656,11 +691,14 @@ async def choose_payment_method(callback: CallbackQuery, state: FSMContext):
     await set_order_payment_method(order_id, method)
     await state.update_data(waiting_order_id=order_id)
     await state.set_state(BuyStates.waiting_payment_proof)
+
     order = await get_order(order_id)
     if not order:
         await callback.answer("الطلب غير موجود", show_alert=True)
         return
+
     _, _, _, quantity, total_price, payment_method, _, _, product_name = order
+
     if method == "sham":
         text = (
             f"💚 <b>الدفع عبر Sham Cash</b>\n\n"
@@ -680,6 +718,7 @@ async def choose_payment_method(callback: CallbackQuery, state: FSMContext):
             f"Binance ID:\n<code>{BINANCE_ID}</code>\n\n"
             f"بعد التحويل أرسل لقطة شاشة لإثبات الدفع الآن."
         )
+
     await callback.message.edit_text(text, reply_markup=back_home_kb())
     await callback.answer()
 
@@ -691,13 +730,16 @@ async def receive_payment_proof(message: Message, state: FSMContext):
         await state.clear()
         await message.answer("لا يوجد طلب مرتبط بهذه الصورة.")
         return
+
     photo = message.photo[-1]
     await set_order_proof(order_id, photo.file_id)
+
     order = await get_order(order_id)
     if not order:
         await state.clear()
         await message.answer("الطلب غير موجود.")
         return
+
     _, _, _, quantity, total_price, payment_method, _, _, product_name = order
     caption = (
         f"📥 <b>طلب جديد للمراجعة</b>\n\n"
@@ -709,10 +751,17 @@ async def receive_payment_proof(message: Message, state: FSMContext):
         f"المستخدم: {message.from_user.full_name}\n"
         f"المعرف: {message.from_user.id}"
     )
+
     try:
-        await bot.send_photo(ADMIN_ID, photo.file_id, caption=caption, reply_markup=approve_reject_kb(order_id))
+        await bot.send_photo(
+            ADMIN_ID,
+            photo.file_id,
+            caption=caption,
+            reply_markup=approve_reject_kb(order_id),
+        )
     except Exception:
         await bot.send_message(ADMIN_ID, caption, reply_markup=approve_reject_kb(order_id))
+
     await state.clear()
     await message.answer("✅ تم استلام صورة الدفع. طلبك الآن بانتظار مراجعة الأدمن.", reply_markup=back_home_kb())
 
@@ -720,6 +769,9 @@ async def receive_payment_proof(message: Message, state: FSMContext):
 async def waiting_proof_non_photo(message: Message):
     await message.answer("أرسل صورة لقطة الشاشة فقط لإثبات الدفع.")
 
+# =========================
+# لوحة الأدمن
+# =========================
 @dp.message(Command("admin"))
 async def cmd_admin(message: Message):
     if not is_admin(message.from_user.id):
@@ -808,6 +860,7 @@ async def add_product_stock(message: Message, state: FSMContext):
     if not lines:
         await message.answer("المخزون فارغ. أرسل سطرًا واحدًا على الأقل.")
         return
+
     product_id = await create_product(
         category_id=data["category_id"],
         name=data["name"],
@@ -816,7 +869,10 @@ async def add_product_stock(message: Message, state: FSMContext):
     )
     await add_stock_lines(product_id, lines)
     await state.clear()
-    await message.answer(f"✅ تم إضافة المنتج بنجاح\nID: {product_id}\nعدد عناصر المخزون: {len(lines)}", reply_markup=admin_products_menu())
+    await message.answer(
+        f"✅ تم إضافة المنتج بنجاح\nID: {product_id}\nعدد عناصر المخزون: {len(lines)}",
+        reply_markup=admin_products_menu(),
+    )
 
 @dp.callback_query(F.data == "admin_add_stock")
 async def admin_add_stock(callback: CallbackQuery, state: FSMContext):
@@ -907,6 +963,7 @@ async def edit_product_field(callback: CallbackQuery, state: FSMContext):
     field = callback.data.split("_", 1)[1]
     data = await state.get_data()
     product_id = data["product_id"]
+
     if field == "toggle":
         product = await get_product(product_id)
         new_value = 0 if product[5] == 1 else 1
@@ -915,6 +972,7 @@ async def edit_product_field(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text("✅ تم تغيير حالة المنتج بنجاح.", reply_markup=admin_products_menu())
         await callback.answer()
         return
+
     await state.update_data(field=field)
     await state.set_state(EditProductStates.value)
     await callback.message.edit_text("أرسل القيمة الجديدة:")
@@ -965,6 +1023,7 @@ async def admin_new_orders(callback: CallbackQuery):
         await callback.message.edit_text("لا توجد طلبات جديدة.", reply_markup=admin_menu())
         await callback.answer()
         return
+
     text = "📥 الطلبات الجديدة:\n\n"
     rows = []
     for oid, username, full_name, product_name, quantity, total_price, payment_method, proof_file_id, status, created_at in orders[:10]:
@@ -986,9 +1045,11 @@ async def approve_order_cb(callback: CallbackQuery):
     if not order:
         await callback.answer("الطلب غير موجود", show_alert=True)
         return
+
     _, user_id, product_id, quantity, total_price, payment_method, payment_proof_file_id, status, product_name = order
     items = await get_order_stock_items(order_id)
     await approve_order(order_id)
+
     secrets = "\n".join([f"<code>{secret}</code>" for _, secret in items])
     try:
         await bot.send_message(
@@ -1001,6 +1062,7 @@ async def approve_order_cb(callback: CallbackQuery):
         )
     except Exception:
         pass
+
     await callback.answer("تم قبول الطلب")
     await admin_new_orders(callback)
 
@@ -1013,8 +1075,10 @@ async def reject_order_cb(callback: CallbackQuery):
     if not order:
         await callback.answer("الطلب غير موجود", show_alert=True)
         return
+
     _, user_id, product_id, quantity, total_price, payment_method, payment_proof_file_id, status, product_name = order
     await reject_order(order_id)
+
     try:
         await bot.send_message(
             user_id,
@@ -1024,6 +1088,7 @@ async def reject_order_cb(callback: CallbackQuery):
         )
     except Exception:
         pass
+
     await callback.answer("تم رفض الطلب")
     await admin_new_orders(callback)
 
@@ -1036,9 +1101,11 @@ async def admin_cancelled_orders(callback: CallbackQuery):
         await callback.message.edit_text("لا توجد طلبات ملغية.", reply_markup=admin_menu())
         await callback.answer()
         return
+
     text = "❌ الطلبات الملغية:\n\n"
     for oid, full_name, product_name, quantity, total_price, status, created_at in orders:
         text += f"#{oid} | {product_name} | العدد: {quantity} | الإجمالي: {format_price(total_price)} | {full_name} | {status_label(status)}\n"
+
     await callback.message.edit_text(text, reply_markup=admin_menu())
     await callback.answer()
 
@@ -1073,6 +1140,9 @@ async def do_broadcast(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(f"✅ تم إرسال الرسالة إلى {sent} مستخدم.", reply_markup=admin_menu())
 
+# =========================
+# التشغيل
+# =========================
 async def main():
     await init_db()
     asyncio.create_task(expire_old_reservations())
